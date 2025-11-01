@@ -356,13 +356,11 @@ export class NetworkScanner {
       this.logger.info(`Starting comprehensive scan on single host: ${ip}`);
       this.logger.info('Scanning all 65,535 ports with OS and service detection');
 
-      // Comprehensive single-host scan: all ports, OS detection, service versions, scripts
+      // Comprehensive single-host scan: all ports, OS detection, service versions
       // Optimized for thorough analysis of a single host
       // -p-: All 65,535 ports
       // -sV: Version detection (intensity 7 = thorough but not exhaustive)
-      // -sC: Default NSE scripts for vulnerability and service enumeration  
       // -O: OS detection with aggressive guessing
-      // -A: Enable OS detection, version detection, script scanning, and traceroute
       // -T4: Aggressive timing (suitable for reliable networks)
       // -Pn: Skip host discovery (we know host is up)
       // --version-intensity 7: Thorough version probing
@@ -370,7 +368,8 @@ export class NetworkScanner {
       // --max-retries 3: More retries for accuracy on single host
       // --min-rate 100: Minimum packet send rate
       // --defeat-rst-ratelimit: More accurate results when RST rate limiting is in effect
-      const nmapCommand = `nmap -p- -sV -sC -O -T4 -Pn --version-intensity 7 --osscan-guess --max-retries 3 --min-rate 100 --defeat-rst-ratelimit ${ip} -oX -`;
+      // Note: -sC (NSE scripts) removed to avoid dependency issues. Add manually if needed.
+      const nmapCommand = `nmap -p- -sV -O -T4 -Pn --version-intensity 7 --osscan-guess --max-retries 3 --min-rate 100 --defeat-rst-ratelimit ${ip} -oX -`;
       this.logger.info(`Executing: ${nmapCommand}`);
 
       const { stdout, stderr } = await execAsync(
