@@ -127,7 +127,7 @@ export class NetworkScanner {
         // Filter out common nmap warnings that aren't actual errors
         const filteredStderr = stderr
           .split('\n')
-          .filter(line => {
+          .filter((line: string) => {
             const trimmed = line.trim();
             // Filter out RTTVAR timing warnings (these are normal for slow networks)
             if (trimmed.includes('RTTVAR has grown')) return false;
@@ -522,7 +522,7 @@ export class NetworkScanner {
         // Filter out common nmap warnings
         const filteredStderr = stderr
           .split('\n')
-          .filter(line => {
+          .filter((line: string) => {
             const trimmed = line.trim();
             if (trimmed.includes('RTTVAR has grown')) return false;
             if (trimmed.includes('decreasing to')) return false;
