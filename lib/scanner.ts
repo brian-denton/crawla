@@ -364,12 +364,15 @@ export class NetworkScanner {
   getCurrentScan(): ScanResult | null {
     const scan = this.db.getLatestScan();
     if (scan) {
-      // Apply friendly names to hosts
+      // Apply friendly names and vulnerabilities to hosts
       const friendlyNames = this.db.getAllFriendlyNames();
       scan.hosts.forEach(host => {
         if (friendlyNames[host.ip]) {
           host.friendlyName = friendlyNames[host.ip];
         }
+        // Load vulnerabilities for this host
+        host.vulnerabilities = this.db.getVulnerabilities(host.ip);
+        host.lastVulnScan = this.db.getLastVulnScanTime(host.ip) || undefined;
       });
     }
     return scan;

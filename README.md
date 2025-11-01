@@ -1,24 +1,26 @@
-# Crawla - Network Scanner Dashboard
+# Crawla - Network Scanner & Vulnerability Assessment Dashboard
 
-A modern, real-time network scanning dashboard built with Next.js, Shadcn UI, and Tailwind CSS. Crawla provides automated network monitoring using nmap to discover hosts, open ports, services, and operating systems on your network.
+A modern, real-time network scanning and vulnerability assessment dashboard built with Next.js, Shadcn UI, and Tailwind CSS. Crawla provides automated network monitoring using Nmap to discover hosts, open ports, services, and operating systems, plus integrated Nuclei vulnerability scanning for security assessment.
 
 ![Dashboard Preview](https://via.placeholder.com/800x400?text=Crawla+Dashboard)
 
 ## Features
 
-- 🔍 **Network Scanning**: Automated nmap scanning of your network (configurable via environment variable)
-- ⚙️ **Multiple Scan Profiles**: Choose from 6 scan profiles ranging from quick (30s) to comprehensive (30min)
+- 🔍 **Network Scanning**: Automated two-phase Nmap scanning (ping discovery + targeted port scanning)
+- 🛡️ **Vulnerability Scanning**: Integrated Nuclei scanner for CVE detection and security assessment
+- ⚙️ **Multiple Scan Profiles**: Choose from 8 optimized scan profiles ranging from quick (30s) to comprehensive (30min)
 - 💾 **Profile Persistence**: Your preferred scan profile is saved and used for all automatic scans
 - ⏰ **Smart Scheduling**: Automatic scanning every 10 minutes using your chosen profile
 - 🎯 **User-Controlled**: You trigger the first scan and choose the profile - no automatic scanning on startup
 - 🌓 **Dark Mode**: Beautiful light and dark themes
-- 📊 **Real-time Dashboard**: Live statistics and host information
+- 📊 **Real-time Dashboard**: Live statistics and host information with severity-based vulnerability alerts
 - 🖥️ **Service Detection**: Identifies running services and versions on up to 1000 ports
 - 🛡️ **OS Detection**: Detects operating systems on discovered hosts (with sudo)
 - 📡 **Port Scanning**: Lists all open ports with service information
 - 🏷️ **Friendly Names**: Add custom names to hosts that persist across scans
-- 📝 **Live Logs**: View real-time nmap scan logs with download and clear options
-- 💾 **SQLite Database**: Persistent storage for scan results and history
+- 📝 **Live Logs**: View real-time Nmap scan logs with download and clear options
+- ⚠️ **Security Alerts**: View discovered vulnerabilities with CVSS severity ratings (CRITICAL, HIGH, MEDIUM, LOW, INFO)
+- 💾 **SQLite Database**: Persistent storage for scan results, host data, and vulnerabilities
 - 📈 **Scan History**: Track network changes over time
 - 🔎 **Host History**: View historical data for individual hosts
 - 🌐 **Hostname Resolution**: Multiple DNS resolution strategies including reverse DNS and MAC vendor lookup
@@ -29,9 +31,10 @@ Before running this application, ensure you have the following installed:
 
 - **Node.js** (v18 or higher)
 - **pnpm** (or npm/yarn)
-- **nmap** - Network scanning tool
+- **Nmap** - Network scanning tool
+- **Nuclei** - Vulnerability scanning tool (optional but recommended)
 
-### Installing nmap
+### Installing Nmap
 
 **macOS:**
 ```bash
@@ -44,8 +47,63 @@ sudo apt-get update
 sudo apt-get install nmap
 ```
 
+**Fedora/RHEL:**
+```bash
+sudo dnf install nmap
+```
+
 **Windows:**
 Download from [nmap.org](https://nmap.org/download.html)
+
+### Installing Nuclei
+
+Nuclei is a fast, customizable vulnerability scanner powered by the global security community. It's used for detecting security issues, CVEs, misconfigurations, and more.
+
+**macOS:**
+```bash
+brew install nuclei
+
+# Update Nuclei templates (recommended)
+nuclei -update-templates
+```
+
+**Linux:**
+```bash
+# Using Go (requires Go 1.21+)
+go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# Or download binary directly
+wget https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.4.10_linux_amd64.zip
+unzip nuclei_3.4.10_linux_amd64.zip
+sudo mv nuclei /usr/local/bin/
+
+# Update templates
+nuclei -update-templates
+```
+
+**Windows:**
+```powershell
+# Using scoop
+scoop install nuclei
+
+# Update templates
+nuclei -update-templates
+```
+
+**Docker:**
+```bash
+docker pull projectdiscovery/nuclei:latest
+```
+
+**Verify Installation:**
+```bash
+nuclei -version
+nuclei -update-templates
+```
+
+For more installation options, see the [official Nuclei documentation](https://docs.projectdiscovery.io/tools/nuclei/install).
+
+**Note:** Nuclei is optional. If not installed, the vulnerability scanning feature will be disabled, but all other features will work normally.
 
 ## Getting Started
 
@@ -60,12 +118,7 @@ cd crawla
 pnpm install
 ```
 
-3. **Run the development server**
-```bash
-pnpm dev
-```
-
-4. **Configure your network** (optional)
+3. **Configure your network** (optional)
 Create a `.env` file in the project root:
 ```bash
 cp .env.example .env
@@ -74,6 +127,11 @@ cp .env.example .env
 Edit `.env` and set your network:
 ```env
 SCAN_NETWORK=192.168.1.0/24
+```
+
+4. **Run the development server**
+```bash
+pnpm dev
 ```
 
 5. **Open your browser**
@@ -85,7 +143,7 @@ Navigate to [http://localhost:3000](http://localhost:3000)
 
 When you first open Crawla, you'll see a welcome prompt asking you to:
 
-1. **Select a Scan Profile** - Choose from 6 different profiles based on your needs (Quick, Comprehensive, etc.)
+1. **Select a Scan Profile** - Choose from 8 different profiles based on your needs (Quick, Comprehensive, etc.)
 2. **Run Your First Scan** - Click the "Run Scan" button to start
 
 Your chosen profile will be saved and used for all future automatic scans. The application will then automatically scan your network every 10 minutes using your preferred profile.
@@ -107,7 +165,10 @@ Click the **"Run Scan"** button in the top-right corner to trigger an immediate 
 2. Click "Run Scan"
 3. The new profile will be saved and used for all future automatic scans
 
-The button will show a spinning animation while scanning is in progress.
+The button will show:
+- **"Discovering hosts..."** - During ping discovery phase
+- **"Scanning ports on X hosts"** - During port scanning phase
+- **"Processing results..."** - While parsing and saving results
 
 ### Host Cards
 
@@ -117,7 +178,44 @@ Each discovered host is displayed in a card showing:
 - Detected operating system
 - Open ports with service information
 - Service versions
+- Discovered vulnerabilities (if scanned with Nuclei)
 - Last seen timestamp
+
+**Host Card Actions:**
+- 🔍 **Nmap Scan Button**: Run a comprehensive Nmap scan on this specific host (all 65,535 ports, OS detection, service versions)
+- 🛡️ **Nuclei Scan Button**: Run a vulnerability scan on this host to detect CVEs and security issues
+- 📋 **Copy Port Button**: Click the copy icon next to any port to copy `IP:PORT` to clipboard
+- ✏️ **Edit Friendly Name**: Add or edit a custom name for the host
+
+### Vulnerability Scanning
+
+Crawla integrates Nuclei for professional-grade vulnerability assessment:
+
+1. **Click the shield icon (🛡️)** on any host card
+2. **Wait for the scan** to complete (typically 2-10 minutes)
+3. **View results** displayed directly in the card with severity badges
+
+**Vulnerability Information Includes:**
+- Vulnerability name and ID (CVE-XXXX-XXXXX)
+- Severity level (CRITICAL, HIGH, MEDIUM, LOW, INFO)
+- Description and reference links
+- Tags (cve, rce, xss, sql, etc.)
+- Discovery timestamp
+
+**Severity Color Coding:**
+- 🔴 **CRITICAL/HIGH**: Red badges (immediate action required)
+- 🟡 **MEDIUM**: Blue badges (review and patch)
+- ⚪ **LOW/INFO**: Gray badges (informational)
+
+**What Nuclei Scans For:**
+- Known CVEs and security vulnerabilities
+- Misconfigurations and exposed services
+- Default credentials and weak authentication
+- Information disclosure
+- SQL injection, XSS, and other web vulnerabilities
+- Subdomain takeovers
+- SSL/TLS issues
+- And much more (10,000+ templates)
 
 ### Dark Mode Toggle
 
@@ -171,242 +269,101 @@ scheduledScanInterval = setInterval(async () => {
 }, 5 * 60 * 1000); // 5 minutes
 ```
 
-**Note**: The interval only starts after you run your first manual scan. You can change your scan profile at any time, and all future automatic scans will use your new preference.
-
 ### Scan Profiles
 
-The application now supports **8 optimized scan profiles** based on nmap best practices. Each profile is tuned for specific use cases with improved timing, detection accuracy, and efficiency.
+The application supports **8 optimized scan profiles** based on Nmap best practices.
 
 **Quick Discovery** ⚡
 - Fast host and port discovery (100 most common ports)
 - TCP connect scan with aggressive timing (T4)
-- Minimal retries for speed
 - No root required
 - Estimated time: **15-30 seconds**
-- Best for: Rapid network overview and host enumeration
+- Best for: Rapid network overview
 
 **Comprehensive (No Root)** ⭐ **Default**
 - Service version detection on top 1000 ports
-- Includes NSE scripts (`-sC`) for vulnerability detection
-- Version intensity 5 (balanced thoroughness)
 - Optimized packet rate (min-rate 50)
 - No root required (TCP connect scan)
 - Estimated time: **3-6 minutes**
-- Best for: Detailed service information without sudo privileges
+- Best for: Detailed service information without sudo
 
 **Standard SYN Scan** 🔐
 - Fast SYN stealth scan with light version detection
-- Uses TCP SYN packets (half-open scan)
 - Quick service identification
 - **Requires root/sudo**
 - Estimated time: **45-90 seconds**
-- Best for: Fast, stealthy scanning when you have root access
+- Best for: Fast, stealthy scanning
 
 **Detailed Analysis** 🔬
-- Thorough service detection with NSE scripts
+- Thorough service detection
 - Version intensity 7 (very thorough)
-- Custom user-agent for HTTP detection
-- Default NSE scripts for enumeration
 - No root required
 - Estimated time: **4-8 minutes**
-- Best for: In-depth service analysis and vulnerability discovery
+- Best for: In-depth service analysis
 
 **Comprehensive with OS Detection** 🎯 🔐
-- Full scan: services, OS, NSE scripts on top 1000 ports
-- SYN scan with version intensity 6
+- Full scan: services, OS on top 1000 ports
 - OS fingerprinting with aggressive guessing
-- RST rate limit defeat for accuracy
 - **Requires root/sudo**
 - Estimated time: **4-8 minutes**
-- Best for: Complete host profiling including operating system
+- Best for: Complete host profiling
 
 **Complete Port Scan** 📊
 - Scans **all 65,535 ports**
-- Service version detection (intensity 5)
-- Optimized with min-rate 300 for speed
+- Service version detection
 - No root required
 - Estimated time: **10-20 minutes**
-- Best for: Exhaustive port discovery and security audits
+- Best for: Exhaustive port discovery
 
 **Stealth Scan** 🥷 🔐
-- Slow, quiet scan to evade IDS/IPS detection
+- Slow, quiet scan to evade IDS/IPS
 - T2 timing (polite, low bandwidth)
-- Adds random data to packets for evasion
-- Minimal retries to reduce noise
 - **Requires root/sudo**
 - Estimated time: **5-10 minutes**
 - Best for: Reconnaissance in monitored environments
 
 **UDP Service Scan** 📡 🔐
 - Scans top 100 UDP ports
-- Identifies DNS, DHCP, SNMP, and other UDP services
-- Fast timing with minimal version detection
-- **Requires root/sudo** (UDP scan requires raw packets)
+- Identifies DNS, DHCP, SNMP services
+- **Requires root/sudo**
 - Estimated time: **3-5 minutes**
 - Best for: Discovering UDP-based services
 
 #### Running Scans with Root Access
 
-Several scan profiles require root privileges for advanced features. Run the application with sudo:
+Several scan profiles require root privileges for advanced features:
 
 ```bash
 sudo pnpm dev
 ```
 
 🔐 **Profiles Requiring Root/Sudo:**
-- **Standard SYN Scan** - SYN stealth scanning (`-sS`)
-- **Comprehensive with OS Detection** - OS fingerprinting (`-O`) + SYN scan
-- **Stealth Scan** - SYN scan with evasion techniques
-- **UDP Service Scan** - UDP scanning (`-sU`)
+- Standard SYN Scan, Comprehensive with OS Detection, Stealth Scan, UDP Service Scan
 
 ✅ **Profiles Working Without Root:**
-- **Quick Discovery** - TCP connect scan
-- **Comprehensive (No Root)** - TCP connect with service detection ⭐ **Default**
-- **Detailed Analysis** - TCP connect with NSE scripts
-- **Complete Port Scan** - TCP connect on all ports
-
-💡 **Recommendation**: Use "Comprehensive (No Root)" for excellent results without sudo. It provides service version detection, vulnerability scanning via NSE scripts, and comprehensive port coverage.
+- Quick Discovery, Comprehensive (No Root) ⭐, Detailed Analysis, Complete Port Scan
 
 ## API Routes
 
-### GET /api/scan
-Retrieve current scan results and status
+### Network Scanning
+- `GET /api/scan` - Get current scan results and status
+- `POST /api/scan` - Trigger a manual network scan with specific profile
+- `GET /api/scan/history` - Get scan history (last 10 scans)
+- `GET /api/scan/scheduled` - Get scheduled scan status
+- `POST /api/scan/scheduled` - Start/update scheduled scanning
+- `DELETE /api/scan/scheduled` - Stop scheduled scanning
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "currentScan": { /* scan results */ },
-    "isScanning": false,
-    "lastScan": "2025-11-01T10:30:00.000Z"
-  }
-}
-```
+### Host Management
+- `GET /api/hosts/[ip]` - Get specific host history
+- `POST /api/hosts/[ip]/scan` - Run comprehensive Nmap scan on single host
+- `POST /api/hosts/[ip]/nuclei` - Run Nuclei vulnerability scan on single host
 
-### POST /api/scan
-Trigger a manual network scan with a specific profile
-
-**Request:**
-```json
-{
-  "network": "192.168.1.0/24",
-  "profile": "comprehensive_noroot"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": { /* scan results */ }
-}
-```
-
-**Available Profiles:**
-- `quick` - Fast discovery (15-30s)
-- `comprehensive_noroot` ⭐ - Detailed service detection with NSE scripts (3-6 min) **Default**
-- `standard` - SYN scan with service detection (requires root, 45-90s)
-- `detailed` - Thorough analysis with NSE scripts (4-8 min)
-- `comprehensive` - Full OS, services, scripts (requires root, 4-8 min)
-- `allports` - All 65,535 ports (10-20 min)
-- `stealth` - Slow, quiet scan for IDS evasion (requires root, 5-10 min)
-- `udp` - UDP service discovery (requires root, 3-5 min)
-
-### GET /api/scan/history
-Get scan history (last 10 scans)
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [ /* array of scan results */ ]
-}
-```
-
-### GET /api/scan/scheduled
-Get scheduled scan status
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "scheduledScanning": true,
-    "interval": "10 minutes",
-    "currentProfile": "comprehensive_noroot"
-  }
-}
-```
-
-### POST /api/scan/scheduled
-Start or update scheduled scanning with a specific profile
-
-**Request:**
-```json
-{
-  "profile": "comprehensive_noroot",
-  "runImmediately": false
-}
-```
-
-**Parameters:**
-- `profile` (string) - The scan profile to use for scheduled scans
-- `runImmediately` (boolean, default: true) - Whether to run a scan immediately or wait for the next interval
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Scheduled scanning started",
-  "data": {
-    "profile": "comprehensive_noroot",
-    "interval": "10 minutes",
-    "scheduledScanning": true
-  }
-}
-```
-
-### DELETE /api/scan/scheduled
-Stop scheduled scanning
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Scheduled scanning stopped"
-}
-```
-
-### GET /api/stats
-Get overall statistics
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "totalScans": 42,
-    "uniqueHostsSeen": 15,
-    "currentActiveHosts": 8,
-    "lastScanTime": "2025-11-01T10:30:00.000Z"
-  }
-}
-```
-
-### GET /api/hosts/[ip]
-Get history for a specific host
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "ip": "192.168.1.100",
-    "history": [ /* array of host snapshots */ ]
-  }
-}
-```
+### Data & Logs
+- `GET /api/stats` - Get overall statistics
+- `GET /api/logs` - Get scan logs
+- `DELETE /api/logs` - Clear scan logs
+- `POST /api/friendly-names` - Set/update friendly name
+- `DELETE /api/friendly-names` - Delete friendly name
 
 ## Tech Stack
 
@@ -416,7 +373,8 @@ Get history for a specific host
 - **Icons**: Lucide React
 - **Language**: TypeScript
 - **Database**: SQLite (better-sqlite3)
-- **Scanning**: nmap
+- **Network Scanning**: Nmap
+- **Vulnerability Scanning**: Nuclei
 
 ## Architecture
 
@@ -425,53 +383,72 @@ crawla/
 ├── app/
 │   ├── api/
 │   │   ├── hosts/
-│   │   │   └── [ip]/route.ts     # Host history endpoint
+│   │   │   └── [ip]/
+│   │   │       ├── route.ts          # Host history
+│   │   │       ├── scan/route.ts     # Single-host Nmap scan
+│   │   │       └── nuclei/route.ts   # Nuclei vulnerability scan
 │   │   ├── scan/
-│   │   │   ├── route.ts          # Main scan endpoint
-│   │   │   ├── history/route.ts  # Scan history
-│   │   │   └── scheduled/route.ts# Scheduled scanning
-│   │   └── stats/route.ts        # Statistics endpoint
-│   ├── layout.tsx                # Root layout with theme provider
-│   └── page.tsx                  # Main dashboard page
+│   │   │   ├── route.ts              # Main scan endpoint
+│   │   │   ├── history/route.ts      # Scan history
+│   │   │   └── scheduled/route.ts    # Scheduled scanning
+│   │   ├── stats/route.ts            # Statistics
+│   │   ├── logs/route.ts             # Scan logs
+│   │   └── friendly-names/route.ts   # Host friendly names
+│   ├── layout.tsx                    # Root layout with theme
+│   └── page.tsx                      # Main dashboard
 ├── components/
-│   ├── ui/                       # Shadcn UI components
-│   ├── host-card.tsx             # Host information card
-│   ├── scan-dashboard.tsx        # Main dashboard component
-│   ├── scan-initializer.tsx      # Scheduled scan initializer
-│   ├── theme-provider.tsx        # Theme context provider
-│   └── theme-toggle.tsx          # Dark mode toggle
+│   ├── ui/                           # Shadcn UI components
+│   ├── host-card.tsx                 # Host card with vulnerability display
+│   ├── scan-dashboard.tsx            # Main dashboard
+│   ├── scan-profile-selector.tsx    # Profile selection dropdown
+│   ├── scan-logs-viewer.tsx         # Live log viewer
+│   ├── theme-provider.tsx            # Theme context
+│   └── theme-toggle.tsx              # Dark mode toggle
 ├── lib/
-│   ├── database.ts               # SQLite database manager
-│   ├── scanner.ts                # Network scanner logic
-│   ├── types.ts                  # TypeScript type definitions
-│   └── utils.ts                  # Utility functions
-└── crawla.db                     # SQLite database (auto-generated)
+│   ├── database.ts                   # SQLite manager
+│   ├── scanner.ts                    # Nmap scanner logic
+│   ├── nuclei-scanner.ts             # Nuclei scanner logic
+│   ├── scan-logger.ts                # Centralized logging
+│   ├── scan-profiles.ts              # Scan profile definitions
+│   ├── config.ts                     # Environment config
+│   ├── types.ts                      # TypeScript types
+│   └── utils.ts                      # Utility functions
+└── crawla.db                         # SQLite database (auto-generated)
 ```
 
 ## Security Considerations
 
-⚠️ **Important**: This application performs network scanning which may:
+⚠️ **Important**: This application performs network scanning and vulnerability assessment which may:
 - Require elevated privileges (root/admin) depending on scan type
-- Be flagged by security software
+- Be flagged by security software or intrusion detection systems
 - Be restricted by network policies
 - Be considered intrusive on networks you don't own/manage
+- Generate significant network traffic
 
 **Best Practices:**
-- Only scan networks you own or have permission to scan
+- **Only scan networks you own or have explicit permission to scan**
 - Be aware of legal implications in your jurisdiction
 - Consider firewall rules and security policies
 - Run with appropriate user permissions
-- Don't expose this dashboard to the public internet without authentication
+- **Don't expose this dashboard to the public internet without authentication**
+- Use responsibly - vulnerability scanning can be detected by IDS/IPS
+- Keep Nuclei templates updated: `nuclei -update-templates`
+- Review and verify all vulnerability findings before taking action
+
+**Legal Notice:**
+Unauthorized network scanning and vulnerability assessment may be illegal in your jurisdiction. Always obtain proper authorization before scanning any network or system.
 
 ## Database
 
 ### Storage Location
 
 The SQLite database is stored at the project root as `crawla.db`. This file contains:
-- All scan results
+- All scan results and metadata
 - Host discovery history
 - Port and service information
 - Operating system detections
+- Vulnerability findings from Nuclei scans
+- Friendly names for hosts
 
 ### Database Schema
 
@@ -483,6 +460,12 @@ The SQLite database is stored at the project root as `crawla.db`. This file cont
 
 **ports** - Stores open ports for each host
 - id, host_id, port, protocol, state, service, version
+
+**vulnerabilities** - Stores discovered vulnerabilities
+- id, ip, vuln_id, name, severity, description, reference, matched_at, curl_command, tags, discovered_at
+
+**friendly_names** - Stores custom host labels
+- ip, friendly_name, created_at, updated_at
 
 ### Backup and Maintenance
 
@@ -499,58 +482,62 @@ rm crawla.db
 
 ## Troubleshooting
 
-### nmap not found
-Ensure nmap is installed and in your system PATH:
+### Nmap not found
+Ensure Nmap is installed and in your system PATH:
 ```bash
 which nmap  # macOS/Linux
 where nmap  # Windows
 ```
 
+### Nuclei not found
+If vulnerability scanning doesn't work:
+```bash
+# Check if installed
+nuclei -version
+
+# Install if missing (macOS)
+brew install nuclei
+
+# Update templates
+nuclei -update-templates
+```
+
 ### Permission denied errors
-Some nmap features require elevated privileges. Run with appropriate permissions or modify scan options to use non-privileged features.
+Some Nmap features require elevated privileges. Run with sudo or modify scan options to use non-privileged features.
 
 ### No hosts discovered
-- Verify the network range is correct
+- Verify the network range is correct in `.env`
 - Check if your firewall is blocking scans
-- Ensure nmap has necessary permissions
-- Try a simpler scan with fewer options
+- Ensure Nmap has necessary permissions
+- Try the "Quick Discovery" profile first
 
 ### Database errors
 
 **"readonly database" error:**
-This happens when the database files are owned by root or have incorrect permissions:
 ```bash
-# Option 1: Delete and recreate (loses all scan history)
+# Delete and recreate (loses history)
 sudo rm -f crawla.db crawla.db-shm crawla.db-wal
-# Restart the app to recreate the database
 
-# Option 2: Fix permissions (preserves scan history)
+# Or fix permissions (preserves history)
 sudo chown $(whoami):staff crawla.db crawla.db-shm crawla.db-wal
 sudo chmod 644 crawla.db crawla.db-shm crawla.db-wal
 ```
 
-**Other database issues:**
-```bash
-# Stop the application
-# Delete the database
-rm crawla.db crawla.db-shm crawla.db-wal
-# Restart the application (database will be recreated)
-```
-
 ### better-sqlite3 bindings not found
-If you see an error about missing bindings file, you need to build the native module:
 ```bash
 cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
 npm run build-release
 cd ../../../../..
 ```
 
-Or simply reinstall dependencies:
-```bash
-rm -rf node_modules
-pnpm install
-cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && npm run build-release
-```
+### NSE Script Engine Errors
+If you see `could not locate nse_main.lua` errors:
+- This is fixed in the latest version
+- NSE scripts (`-sC` flag) have been removed from default profiles
+- Use the "Vulnerability Scan (Advanced)" profile if you need NSE scripts
+- Ensure full Nmap installation: `brew install nmap` or reinstall from [nmap.org](https://nmap.org)
+
+See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for more detailed troubleshooting steps.
 
 ## Development
 
@@ -584,4 +571,13 @@ This project is licensed under the MIT License.
 - Built with [Next.js](https://nextjs.org/)
 - UI components from [Shadcn UI](https://ui.shadcn.com/)
 - Styled with [Tailwind CSS](https://tailwindcss.com/)
-- Network scanning by [nmap](https://nmap.org/)
+- Network scanning by [Nmap](https://nmap.org/)
+- Vulnerability scanning by [Nuclei](https://github.com/projectdiscovery/nuclei) from [ProjectDiscovery](https://projectdiscovery.io/)
+- Icons from [Lucide](https://lucide.dev/)
+
+## Resources
+
+- **Nmap Documentation**: [https://nmap.org/book/man.html](https://nmap.org/book/man.html)
+- **Nuclei Documentation**: [https://docs.projectdiscovery.io/tools/nuclei](https://docs.projectdiscovery.io/tools/nuclei)
+- **Nuclei Templates**: [https://github.com/projectdiscovery/nuclei-templates](https://github.com/projectdiscovery/nuclei-templates)
+- **ProjectDiscovery Cloud**: [https://cloud.projectdiscovery.io/](https://cloud.projectdiscovery.io/)

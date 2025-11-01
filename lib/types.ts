@@ -6,6 +6,17 @@ export interface Port {
   version?: string;
 }
 
+export interface Vulnerability {
+  id: string;
+  name: string;
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  description?: string;
+  reference?: string[];
+  matched_at?: string;
+  curl_command?: string;
+  tags?: string[];
+}
+
 export interface Host {
   ip: string;
   hostname?: string;
@@ -14,6 +25,8 @@ export interface Host {
   os?: string;
   ports: Port[];
   lastSeen: Date;
+  vulnerabilities?: Vulnerability[];
+  lastVulnScan?: Date;
 }
 
 export interface ScanResult {

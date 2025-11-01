@@ -93,12 +93,33 @@ export class DatabaseManager {
       `);
       console.log('Friendly names table created');
 
+      // Create vulnerabilities table
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS vulnerabilities (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ip TEXT NOT NULL,
+          vuln_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          description TEXT,
+          reference TEXT,
+          matched_at TEXT,
+          curl_command TEXT,
+          tags TEXT,
+          discovered_at DATETIME NOT NULL,
+          UNIQUE(ip, vuln_id)
+        )
+      `);
+      console.log('Vulnerabilities table created');
+
       // Create indexes for better query performance
       this.db.exec(`
         CREATE INDEX IF NOT EXISTS idx_hosts_scan_id ON hosts(scan_id);
         CREATE INDEX IF NOT EXISTS idx_hosts_ip ON hosts(ip);
         CREATE INDEX IF NOT EXISTS idx_ports_host_id ON ports(host_id);
         CREATE INDEX IF NOT EXISTS idx_scans_timestamp ON scans(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_vulnerabilities_ip ON vulnerabilities(ip);
+        CREATE INDEX IF NOT EXISTS idx_vulnerabilities_severity ON vulnerabilities(severity);
       `);
       console.log('Database indexes created');
       console.log('Database initialization complete');
@@ -403,6 +424,84 @@ export class DatabaseManager {
     const stmt = this.db.prepare('DELETE FROM friendly_names WHERE ip = ?');
     stmt.run(ip);
     console.log(`Deleted friendly name for ${ip}`);
+  }
+
+  saveVulnerabilities(ip: string, vulnerabilities: import('./types').Vulnerability[]): void {
+    if (vulnerabilities.length === 0) {
+      console.log(`No vulnerabilities to save for ${ip}`);
+      return;
+    }
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO vulnerabilities 
+      (ip, vuln_id, name, severity, description, reference, matched_at, curl_command, tags, discovered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const now = new Date().toISOString();
+
+    const transaction = this.db.transaction((vulns: import('./types').Vulnerability[]) => {
+      for (const vuln of vulns) {
+        stmt.run(
+          ip,
+          vuln.id,
+          vuln.name,
+          vuln.severity,
+          vuln.description || null,
+          vuln.reference ? JSON.stringify(vuln.reference) : null,
+          vuln.matched_at || null,
+          vuln.curl_command || null,
+          vuln.tags ? JSON.stringify(vuln.tags) : null,
+          now
+        );
+      }
+    });
+
+    transaction(vulnerabilities);
+    console.log(`Saved ${vulnerabilities.length} vulnerabilities for ${ip}`);
+  }
+
+  getVulnerabilities(ip: string): import('./types').Vulnerability[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM vulnerabilities WHERE ip = ? ORDER BY 
+      CASE severity 
+        WHEN 'critical' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'low' THEN 4
+        WHEN 'info' THEN 5
+      END
+    `);
+    const rows = stmt.all(ip) as Array<{
+      vuln_id: string;
+      name: string;
+      severity: string;
+      description: string | null;
+      reference: string | null;
+      matched_at: string | null;
+      curl_command: string | null;
+      tags: string | null;
+      discovered_at: string;
+    }>;
+
+    return rows.map(row => ({
+      id: row.vuln_id,
+      name: row.name,
+      severity: row.severity as 'info' | 'low' | 'medium' | 'high' | 'critical',
+      description: row.description || undefined,
+      reference: row.reference ? JSON.parse(row.reference) : undefined,
+      matched_at: row.matched_at || undefined,
+      curl_command: row.curl_command || undefined,
+      tags: row.tags ? JSON.parse(row.tags) : undefined,
+    }));
+  }
+
+  getLastVulnScanTime(ip: string): Date | null {
+    const stmt = this.db.prepare(`
+      SELECT MAX(discovered_at) as last_scan FROM vulnerabilities WHERE ip = ?
+    `);
+    const result = stmt.get(ip) as { last_scan: string | null } | undefined;
+    return result?.last_scan ? new Date(result.last_scan) : null;
   }
 
   close() {

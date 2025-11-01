@@ -5,8 +5,9 @@ import { Host } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Monitor, Globe, Server, Shield, ChevronDown, ChevronUp, Edit2, X, Check, Tag, Copy, CheckCheck, Search, Loader2 } from "lucide-react"
+import { Monitor, Globe, Server, Shield, ChevronDown, ChevronUp, Edit2, X, Check, Tag, Copy, CheckCheck, Search, Loader2, ShieldAlert, ShieldCheck } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
 
 interface HostCardProps {
   host: Host
@@ -21,10 +22,16 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
   const [isSaving, setIsSaving] = useState(false)
   const [copiedPort, setCopiedPort] = useState<number | null>(null)
   const [isScanning, setIsScanning] = useState(false)
+  const [isScanningVulns, setIsScanningVulns] = useState(false)
+  const [showAllVulns, setShowAllVulns] = useState(false)
   const [localHost, setLocalHost] = useState(host)
   
   const displayedPorts = showAllPorts ? localHost.ports : localHost.ports.slice(0, 8)
   const hasMorePorts = localHost.ports.length > 8
+  
+  // Check if host has been scanned and is secure
+  const hasBeenScanned = localHost.lastVulnScan !== undefined
+  const isSecure = hasBeenScanned && (!localHost.vulnerabilities || localHost.vulnerabilities.length === 0)
 
   const saveFriendlyName = async () => {
     if (!friendlyName.trim()) {
@@ -48,15 +55,16 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
         console.log('Save successful:', data)
         host.friendlyName = friendlyName
         setIsEditingName(false)
+        toast.success(`Friendly name saved: ${friendlyName}`)
         onFriendlyNameUpdate?.()
       } else {
         const errorData = await response.json()
         console.error('Failed to save friendly name:', errorData)
-        alert(`Failed to save: ${errorData.error || 'Unknown error'}`)
+        toast.error(`Failed to save: ${errorData.error || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Failed to save friendly name:', err)
-      alert(`Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setIsSaving(false)
     }
@@ -98,8 +106,9 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
     if (isScanning) return
     
     setIsScanning(true)
+    toast.info(`Starting comprehensive scan on ${localHost.ip}...`)
+    
     try {
-      console.log(`Starting comprehensive scan on ${localHost.ip}`)
       const response = await fetch(`/api/hosts/${encodeURIComponent(localHost.ip)}/scan`, {
         method: 'POST',
       })
@@ -107,26 +116,102 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.data) {
-          console.log('Scan completed successfully:', data.data)
           // Update local state with new host data
           setLocalHost(data.data)
+          toast.success(`Scan completed! Found ${data.data.ports.length} open ports`)
           // Notify parent to refresh if needed
           onHostUpdate?.(data.data)
           onFriendlyNameUpdate?.()
         } else {
-          console.error('Scan failed:', data.error)
-          alert(`Scan failed: ${data.error || 'Unknown error'}`)
+          toast.error(`Scan failed: ${data.error || 'Unknown error'}`)
         }
       } else {
         const errorData = await response.json()
-        console.error('Scan request failed:', errorData)
-        alert(`Scan failed: ${errorData.error || 'Unknown error'}`)
+        toast.error(`Scan failed: ${errorData.error || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Failed to scan host:', err)
-      alert(`Failed to scan host: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      toast.error(`Failed to scan host: ${err instanceof Error ? err.message : 'Network error'}`)
     } finally {
       setIsScanning(false)
+    }
+  }
+
+  const scanVulnerabilities = async () => {
+    setIsScanningVulns(true)
+    toast.info(`Starting vulnerability scan on ${host.ip}...`, {
+      description: 'This may take 2-10 minutes',
+      duration: 5000,
+    })
+    
+    try {
+      const response = await fetch(`/api/hosts/${host.ip}/nuclei`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('Nuclei scan failed:', error)
+        toast.error('Vulnerability scan failed', {
+          description: error.error || 'Unknown error',
+          duration: 6000,
+        })
+        return
+      }
+
+      const data = await response.json()
+      if (data.success && data.data) {
+        // Update local host state with vulnerabilities
+        setLocalHost(prev => ({
+          ...prev,
+          vulnerabilities: data.data.vulnerabilities,
+          lastVulnScan: new Date(data.data.scannedAt)
+        }))
+        
+        const vulnCount = data.data.vulnerabilities.length
+        
+        if (vulnCount > 0) {
+          // Keep vulnerabilities collapsed by default
+          setShowAllVulns(false)
+          
+          const criticalCount = data.data.vulnerabilities.filter((v: { severity: string }) => v.severity === 'critical').length
+          const highCount = data.data.vulnerabilities.filter((v: { severity: string }) => v.severity === 'high').length
+          
+          if (criticalCount > 0 || highCount > 0) {
+            toast.error(`Found ${vulnCount} vulnerabilities!`, {
+              description: `${criticalCount} critical, ${highCount} high severity`,
+              duration: 8000,
+            })
+          } else {
+            toast.warning(`Found ${vulnCount} vulnerabilities`, {
+              description: 'Review the findings in the card below',
+              duration: 6000,
+            })
+          }
+        } else {
+          toast.success('No vulnerabilities found', {
+            description: 'Target appears secure',
+            duration: 4000,
+          })
+        }
+        
+        // Refresh dashboard
+        if (onHostUpdate) {
+          onHostUpdate({
+            ...localHost,
+            vulnerabilities: data.data.vulnerabilities,
+            lastVulnScan: new Date(data.data.scannedAt)
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to scan vulnerabilities:', error)
+      toast.error('Vulnerability scan failed', {
+        description: 'Make sure Nuclei is installed: brew install nuclei',
+        duration: 6000,
+      })
+    } finally {
+      setIsScanningVulns(false)
     }
   }
 
@@ -139,18 +224,38 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
             <CardTitle className="text-lg truncate">{localHost.ip}</CardTitle>
           </div>
           <div className="flex items-center gap-2">
+            {isSecure && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-green-500/10 border border-green-500/20">
+                <ShieldCheck className="h-3.5 w-3.5 text-green-600 dark:text-green-500" />
+                <span className="text-xs font-medium text-green-700 dark:text-green-400">Secure</span>
+              </div>
+            )}
             <Button
               size="icon"
               variant="outline"
               className="h-8 w-8 flex-shrink-0"
               onClick={scanSingleHost}
               disabled={isScanning}
-              title="Run comprehensive scan on this host (all ports, OS, hostname)"
+              title="Run comprehensive Nmap scan (all ports, OS, hostname)"
             >
               {isScanning ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Search className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8 flex-shrink-0"
+              onClick={scanVulnerabilities}
+              disabled={isScanningVulns}
+              title="Run Nuclei vulnerability scan"
+            >
+              {isScanningVulns ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldAlert className="h-4 w-4" />
               )}
             </Button>
             <Badge variant={localHost.status === "up" ? "default" : "secondary"}>
@@ -327,13 +432,89 @@ export function HostCard({ host, onFriendlyNameUpdate, onHostUpdate }: HostCardP
             No open ports detected
           </div>
         )}
+
+        {/* Vulnerabilities Section */}
+        {localHost.vulnerabilities && localHost.vulnerabilities.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-destructive flex-shrink-0" />
+                <span className="text-sm font-semibold">Vulnerabilities</span>
+                <Badge variant="destructive" className="text-xs">
+                  {localHost.vulnerabilities.length}
+                </Badge>
+              </div>
+              {localHost.lastVulnScan && (
+                <span className="text-xs text-muted-foreground">
+                  Scanned {new Date(localHost.lastVulnScan).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {(showAllVulns ? localHost.vulnerabilities : localHost.vulnerabilities.slice(0, 3)).map((vuln, idx) => (
+                <div key={idx} className="p-2 rounded-md bg-muted/50 border border-muted">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-sm font-medium flex-1">{vuln.name}</span>
+                    <Badge 
+                      variant={
+                        vuln.severity === 'critical' ? 'destructive' : 
+                        vuln.severity === 'high' ? 'destructive' : 
+                        vuln.severity === 'medium' ? 'default' : 
+                        'secondary'
+                      }
+                      className="text-xs flex-shrink-0"
+                    >
+                      {vuln.severity.toUpperCase()}
+                    </Badge>
+                  </div>
+                  {vuln.description && (
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {vuln.description}
+                    </p>
+                  )}
+                  {vuln.tags && vuln.tags.length > 0 && (
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {vuln.tags.slice(0, 3).map((tag, tagIdx) => (
+                        <span key={tagIdx} className="text-[10px] px-1.5 py-0.5 rounded bg-background text-muted-foreground">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {localHost.vulnerabilities.length > 3 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs w-full mt-1"
+                  onClick={() => setShowAllVulns(!showAllVulns)}
+                >
+                  {showAllVulns ? (
+                    <>
+                      <ChevronUp className="h-3 w-3 mr-1" />
+                      Show Less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3 w-3 mr-1" />
+                      Show {localHost.vulnerabilities.length - 3} More Vulnerabilities
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
         
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground mt-4">
           <span>Last seen: {new Date(localHost.lastSeen).toLocaleString()}</span>
-          {isScanning && (
+          {(isScanning || isScanningVulns) && (
             <span className="text-primary font-medium flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Scanning...
+              {isScanning ? 'Scanning ports...' : 'Scanning vulnerabilities...'}
             </span>
           )}
         </div>
