@@ -14,6 +14,14 @@ export class NetworkScanner {
   private isScanning: boolean = false;
   private db: DatabaseManager;
   private logger: ScanLogger;
+  private scanStatus: {
+    phase: 'idle' | 'discovery' | 'port_scan' | 'processing';
+    message: string;
+    hostsFound?: number;
+  } = {
+    phase: 'idle',
+    message: 'Ready',
+  };
 
   private constructor() {
     this.db = DatabaseManager.getInstance();
@@ -53,8 +61,44 @@ export class NetworkScanner {
       this.logger.info(`Starting ${profile.name} on ${network}`);
       this.logger.info(`Expected duration: ${profile.estimatedTime}`);
 
-      // Build nmap command
-      const nmapCommand = `nmap ${profile.command} ${network} -oX -`;
+      // Phase 1: Host Discovery (Ping Scan)
+      this.scanStatus = {
+        phase: 'discovery',
+        message: 'Performing host discovery (ping scan)...',
+      };
+      this.logger.info('Phase 1: Performing host discovery (ping scan)...');
+      const liveHosts = await this.discoverLiveHosts(network);
+      
+      if (liveHosts.length === 0) {
+        this.logger.warning('No live hosts found during discovery phase');
+        this.scanStatus = { phase: 'idle', message: 'Ready' };
+        const scanDuration = Date.now() - startTime;
+        const emptyResult: ScanResult = {
+          id: `scan_${Date.now()}`,
+          timestamp: new Date(),
+          hosts: [],
+          totalHosts: 0,
+          activeHosts: 0,
+          scanDuration,
+          network,
+        };
+        this.db.saveScanResult(emptyResult);
+        return emptyResult;
+      }
+
+      this.logger.success(`✓ Discovered ${liveHosts.length} live hosts`);
+      
+      // Phase 2: Port Scanning
+      this.scanStatus = {
+        phase: 'port_scan',
+        message: `Scanning ports on ${liveHosts.length} hosts`,
+        hostsFound: liveHosts.length,
+      };
+      this.logger.info(`Phase 2: Port scanning ${liveHosts.length} hosts`);
+
+      // Build nmap command for live hosts only
+      const targets = liveHosts.join(' ');
+      const nmapCommand = `nmap ${profile.command} ${targets} -oX -`;
       this.logger.info(`Executing: ${nmapCommand}`);
 
       // Set timeout based on profile (comprehensive scans need more time)
@@ -106,6 +150,12 @@ export class NetworkScanner {
         }
       }
 
+      // Phase 3: Processing Results
+      this.scanStatus = {
+        phase: 'processing',
+        message: 'Processing scan results...',
+        hostsFound: liveHosts.length,
+      };
       this.logger.info('nmap scan completed, parsing results...');
 
       // Validate we have XML output
@@ -161,6 +211,7 @@ export class NetworkScanner {
       throw new Error(`Scan failed: ${errorMsg}`);
     } finally {
       this.isScanning = false;
+      this.scanStatus = { phase: 'idle', message: 'Ready' };
     }
   }
 
@@ -329,6 +380,69 @@ export class NetworkScanner {
 
   isCurrentlyScanning(): boolean {
     return this.isScanning;
+  }
+
+  getScanStatus() {
+    return {
+      isScanning: this.isScanning,
+      ...this.scanStatus,
+    };
+  }
+
+  private async discoverLiveHosts(network: string): Promise<string[]> {
+    this.logger.info(`Discovering live hosts on ${network}...`);
+    
+    // Fast ping scan: -sn (no port scan), -T4 (aggressive timing), -PE -PP -PM (multiple ping types)
+    // --min-rate 100: Fast discovery
+    const discoveryCommand = `nmap -sn -T4 -PE -PP -PM --min-rate 100 ${network} -oX -`;
+    this.logger.info(`Discovery command: ${discoveryCommand}`);
+
+    try {
+      const { stdout } = await execAsync(
+        discoveryCommand,
+        {
+          maxBuffer: 1024 * 1024 * 10,
+          timeout: 2 * 60 * 1000, // 2 minute timeout for host discovery
+          encoding: 'utf8'
+        }
+      ).catch((error) => {
+        if (error.stdout && error.stdout.includes('<?xml')) {
+          return { stdout: error.stdout, stderr: error.stderr || '' };
+        }
+        throw error;
+      });
+
+      // Parse XML to extract live hosts
+      const liveHosts: string[] = [];
+      const hostMatches = stdout.matchAll(/<host[^>]*>[\s\S]*?<\/host>/g);
+
+      for (const hostMatch of hostMatches) {
+        const hostXML = hostMatch[0];
+        
+        // Extract IP address
+        const ipMatch = hostXML.match(/<address addr="([^"]+)" addrtype="ipv4"/);
+        if (!ipMatch) continue;
+        const ip = ipMatch[1];
+        
+        // Check if host is up
+        const statusMatch = hostXML.match(/<status state="([^"]+)"/);
+        const status = statusMatch ? statusMatch[1] : 'unknown';
+        
+        if (status === 'up') {
+          liveHosts.push(ip);
+          this.logger.info(`  ✓ ${ip} is alive`);
+        }
+      }
+
+      this.logger.success(`Host discovery complete: ${liveHosts.length} live hosts found`);
+      return liveHosts;
+
+    } catch (error) {
+      this.logger.error(`Host discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fall back to scanning the full network if discovery fails
+      this.logger.warning('Falling back to full network scan');
+      return [network];
+    }
   }
 
   async scanSingleHost(ip: string): Promise<Host> {

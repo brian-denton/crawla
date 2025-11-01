@@ -47,15 +47,20 @@ export async function GET() {
     console.log('GET /api/scan - Fetching scan data...');
     const scanner = NetworkScanner.getInstance();
     const currentScan = scanner.getCurrentScan();
-    const isScanning = scanner.isCurrentlyScanning();
+    const scanStatus = scanner.getScanStatus();
     
     console.log('GET /api/scan - Success');
     return NextResponse.json({
       success: true,
       data: {
         currentScan: currentScan || null,
-        isScanning: isScanning || false,
+        isScanning: scanStatus.isScanning || false,
         lastScan: currentScan?.timestamp || null,
+        scanStatus: {
+          phase: scanStatus.phase,
+          message: scanStatus.message,
+          hostsFound: scanStatus.hostsFound,
+        },
       },
     });
   } catch (error) {
@@ -68,6 +73,10 @@ export async function GET() {
           currentScan: null,
           isScanning: false,
           lastScan: null,
+          scanStatus: {
+            phase: 'idle',
+            message: 'Ready',
+          },
         },
       },
       { status: 500 }

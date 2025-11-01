@@ -22,6 +22,7 @@ export function ScanDashboard() {
   const [selectedProfile, setSelectedProfile] = useState('comprehensive_noroot')
   const [scheduledScanActive, setScheduledScanActive] = useState(false)
   const [hasRunInitialScan, setHasRunInitialScan] = useState(false)
+  const [scanStatusMessage, setScanStatusMessage] = useState('Scanning...')
 
   // Load preferred profile from localStorage on mount
   useEffect(() => {
@@ -60,6 +61,20 @@ export function ScanDashboard() {
           setLastScan(new Date(data.data.lastScan))
         }
         setIsScanning(data.data.isScanning || false)
+        
+        // Update scan status message
+        if (data.data.scanStatus) {
+          const status = data.data.scanStatus
+          if (status.phase === 'discovery') {
+            setScanStatusMessage('Discovering hosts...')
+          } else if (status.phase === 'port_scan' && status.hostsFound) {
+            setScanStatusMessage(`Scanning ports on ${status.hostsFound} hosts`)
+          } else if (status.phase === 'processing') {
+            setScanStatusMessage('Processing results...')
+          } else {
+            setScanStatusMessage('Scanning...')
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to fetch scan data:', err)
@@ -268,9 +283,10 @@ export function ScanDashboard() {
                 onClick={triggerManualScan}
                 disabled={isScanning}
                 size="lg"
+                className="min-w-[200px]"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${isScanning ? 'animate-spin' : ''}`} />
-                {isScanning ? 'Scanning...' : 'Run Scan'}
+                {isScanning ? scanStatusMessage : 'Run Scan'}
               </Button>
               <ThemeToggle />
             </div>
