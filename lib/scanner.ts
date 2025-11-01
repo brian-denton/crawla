@@ -345,7 +345,20 @@ export class NetworkScanner {
     }
     
     console.log(`Total hosts parsed: ${hostCount}`);
-    return hosts;
+    
+    // Remove duplicates by IP (keep the last occurrence which has the most complete data)
+    const uniqueHosts = hosts.reduce((acc, host) => {
+      acc.set(host.ip, host);
+      return acc;
+    }, new Map<string, Host>());
+    
+    const deduplicatedHosts = Array.from(uniqueHosts.values());
+    
+    if (hosts.length !== deduplicatedHosts.length) {
+      this.logger.warning(`Removed ${hosts.length - deduplicatedHosts.length} duplicate host entries`);
+    }
+    
+    return deduplicatedHosts;
   }
 
   getCurrentScan(): ScanResult | null {

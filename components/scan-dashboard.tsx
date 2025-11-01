@@ -427,11 +427,12 @@ export function ScanDashboard() {
                 </div>
               )}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {scanData.hosts.map((host, idx) => (
+                {scanData.hosts.map((host) => (
                   <HostCard 
-                    key={idx} 
+                    key={host.ip} 
                     host={host}
                     onFriendlyNameUpdate={fetchScanData}
+                    onHostUpdate={fetchScanData}
                   />
                 ))}
               </div>

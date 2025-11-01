@@ -61,7 +61,8 @@ export class DatabaseManager {
           status TEXT NOT NULL,
           os TEXT,
           last_seen DATETIME NOT NULL,
-          FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+          FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+          UNIQUE(scan_id, ip)
         )
       `);
       console.log('Hosts table created');
@@ -169,7 +170,7 @@ export class DatabaseManager {
     `);
 
     const insertHost = this.db.prepare(`
-      INSERT INTO hosts (scan_id, ip, hostname, status, os, last_seen)
+      INSERT OR REPLACE INTO hosts (scan_id, ip, hostname, status, os, last_seen)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
