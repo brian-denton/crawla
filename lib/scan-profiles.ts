@@ -9,50 +9,66 @@ export interface ScanProfile {
 export const SCAN_PROFILES: Record<string, ScanProfile> = {
   quick: {
     name: 'Quick Discovery',
-    description: 'Fast host discovery with top 100 ports',
-    command: '-sT -T3 -F --top-ports 100 -R --system-dns -Pn --max-retries 2',
+    description: 'Fast host and port discovery (100 most common ports)',
+    command: '-sT -T4 -F --top-ports 100 -Pn --max-retries 1 --min-rate 100',
     requiresRoot: false,
-    estimatedTime: '30-60 seconds',
+    estimatedTime: '15-30 seconds',
   },
 
   comprehensive_noroot: {
     name: 'Comprehensive (No Root)',
-    description: 'Service detection on top 1000 ports without OS detection',
-    command: '-sT -sV -T3 --top-ports 1000 -R --system-dns -Pn --version-intensity 5 --max-retries 2',
+    description: 'Service version detection on top 1000 ports with scripts',
+    command: '-sT -sV -sC -T4 --top-ports 1000 -Pn --version-intensity 5 --max-retries 2 --min-rate 50',
     requiresRoot: false,
-    estimatedTime: '5-8 minutes',
+    estimatedTime: '3-6 minutes',
   },
   
   standard: {
-    name: 'Standard Scan',
-    description: 'Host discovery with common port scanning',
-    command: '-sS -T4 -F',
+    name: 'Standard SYN Scan',
+    description: 'Fast SYN stealth scan with service detection (requires sudo)',
+    command: '-sS -sV -T4 -F --version-light -Pn --max-retries 1 --min-rate 100',
     requiresRoot: true,
-    estimatedTime: '1-2 minutes',
+    estimatedTime: '45-90 seconds',
   },
   
   detailed: {
-    name: 'Detailed Scan',
-    description: 'Comprehensive scan with service detection',
-    command: '-sV -T3 --top-ports 1000 --max-retries 2',
+    name: 'Detailed Analysis',
+    description: 'Thorough service detection with NSE scripts',
+    command: '-sT -sV -sC -T4 --top-ports 1000 --version-intensity 7 --max-retries 2 -Pn --script-args http.useragent="Mozilla/5.0"',
     requiresRoot: false,
-    estimatedTime: '2-5 minutes',
+    estimatedTime: '4-8 minutes',
   },
   
   comprehensive: {
-    name: 'Comprehensive Scan with OS',
-    description: 'Full scan with OS and service detection (requires sudo)',
-    command: '-sS -sV -O -T3 --osscan-guess --top-ports 1000 -R --system-dns -Pn --version-intensity 5 --max-retries 2',
+    name: 'Comprehensive with OS Detection',
+    description: 'Full scan: services, OS, scripts on top 1000 ports (requires sudo)',
+    command: '-sS -sV -sC -O -T4 --top-ports 1000 --osscan-guess --version-intensity 6 -Pn --max-retries 2 --defeat-rst-ratelimit --min-rate 50',
     requiresRoot: true,
-    estimatedTime: '5-10 minutes',
+    estimatedTime: '4-8 minutes',
   },
 
   allports: {
-    name: 'All Ports Scan',
-    description: 'Scan all 65535 ports with service detection (very slow)',
-    command: '-sT -sV -p- -T3 -R --system-dns -Pn --version-intensity 5 --max-retries 2',
+    name: 'Complete Port Scan',
+    description: 'All 65,535 ports with service detection (very thorough)',
+    command: '-sT -sV -p- -T4 -Pn --version-intensity 5 --max-retries 2 --min-rate 300',
     requiresRoot: false,
-    estimatedTime: '15-30 minutes',
+    estimatedTime: '10-20 minutes',
+  },
+  
+  stealth: {
+    name: 'Stealth Scan',
+    description: 'Slow, quiet scan to evade detection (requires sudo)',
+    command: '-sS -T2 -F --max-retries 1 -Pn --data-length 25',
+    requiresRoot: true,
+    estimatedTime: '5-10 minutes',
+  },
+  
+  udp: {
+    name: 'UDP Service Scan',
+    description: 'Scan most common UDP ports and services',
+    command: '-sU -T4 --top-ports 100 -Pn --max-retries 1 --version-intensity 0',
+    requiresRoot: true,
+    estimatedTime: '3-5 minutes',
   },
 };
 

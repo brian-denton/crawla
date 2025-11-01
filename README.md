@@ -175,65 +175,97 @@ scheduledScanInterval = setInterval(async () => {
 
 ### Scan Profiles
 
-The application supports multiple scan profiles with different speeds and detail levels. You can select the profile from the dropdown on the dashboard before running a manual scan.
+The application now supports **8 optimized scan profiles** based on nmap best practices. Each profile is tuned for specific use cases with improved timing, detection accuracy, and efficiency.
 
-**Quick Discovery**
-- Fast host discovery with top 100 port scan
-- No root required (uses TCP connect scan)
-- Includes hostname resolution
-- Estimated time: 30-60 seconds
-- Best for: Quick network overview
+**Quick Discovery** ⚡
+- Fast host and port discovery (100 most common ports)
+- TCP connect scan with aggressive timing (T4)
+- Minimal retries for speed
+- No root required
+- Estimated time: **15-30 seconds**
+- Best for: Rapid network overview and host enumeration
 
-**Comprehensive (No Root)** ⭐ Default
-- Service detection on top 1000 ports
-- Full version detection (intensity 5)
-- Hostname resolution with DNS fallback
-- No root required (uses TCP connect scan)
-- Estimated time: 5-8 minutes
-- Best for: Detailed service information without sudo
-
-**Standard Scan**
-- Host discovery with common port scanning
-- Requires root/sudo (SYN scan)
-- Estimated time: 1-2 minutes
-- Best for: Fast SYN scanning if you have root access
-
-**Detailed Scan**
+**Comprehensive (No Root)** ⭐ **Default**
 - Service version detection on top 1000 ports
-- No root required
-- Includes service fingerprinting
-- Estimated time: 2-5 minutes
-- Best for: Service identification without hostname resolution overhead
+- Includes NSE scripts (`-sC`) for vulnerability detection
+- Version intensity 5 (balanced thoroughness)
+- Optimized packet rate (min-rate 50)
+- No root required (TCP connect scan)
+- Estimated time: **3-6 minutes**
+- Best for: Detailed service information without sudo privileges
 
-**Comprehensive Scan with OS** 🔐
-- Full scan with OS and service detection
-- **Requires root/sudo** (SYN scan + OS detection)
-- Top 1000 ports with version detection
-- Hostname resolution included
-- OS fingerprinting with aggressive detection
-- Estimated time: 5-10 minutes
-- Best for: Maximum information when you have root access
+**Standard SYN Scan** 🔐
+- Fast SYN stealth scan with light version detection
+- Uses TCP SYN packets (half-open scan)
+- Quick service identification
+- **Requires root/sudo**
+- Estimated time: **45-90 seconds**
+- Best for: Fast, stealthy scanning when you have root access
 
-**All Ports Scan** ⚠️
-- Scans all 65,535 ports
-- Service version detection
+**Detailed Analysis** 🔬
+- Thorough service detection with NSE scripts
+- Version intensity 7 (very thorough)
+- Custom user-agent for HTTP detection
+- Default NSE scripts for enumeration
 - No root required
-- **Very slow** - takes 15-30 minutes
-- Best for: Comprehensive security audits
+- Estimated time: **4-8 minutes**
+- Best for: In-depth service analysis and vulnerability discovery
+
+**Comprehensive with OS Detection** 🎯 🔐
+- Full scan: services, OS, NSE scripts on top 1000 ports
+- SYN scan with version intensity 6
+- OS fingerprinting with aggressive guessing
+- RST rate limit defeat for accuracy
+- **Requires root/sudo**
+- Estimated time: **4-8 minutes**
+- Best for: Complete host profiling including operating system
+
+**Complete Port Scan** 📊
+- Scans **all 65,535 ports**
+- Service version detection (intensity 5)
+- Optimized with min-rate 300 for speed
+- No root required
+- Estimated time: **10-20 minutes**
+- Best for: Exhaustive port discovery and security audits
+
+**Stealth Scan** 🥷 🔐
+- Slow, quiet scan to evade IDS/IPS detection
+- T2 timing (polite, low bandwidth)
+- Adds random data to packets for evasion
+- Minimal retries to reduce noise
+- **Requires root/sudo**
+- Estimated time: **5-10 minutes**
+- Best for: Reconnaissance in monitored environments
+
+**UDP Service Scan** 📡 🔐
+- Scans top 100 UDP ports
+- Identifies DNS, DHCP, SNMP, and other UDP services
+- Fast timing with minimal version detection
+- **Requires root/sudo** (UDP scan requires raw packets)
+- Estimated time: **3-5 minutes**
+- Best for: Discovering UDP-based services
 
 #### Running Scans with Root Access
 
-For OS detection (only available in "Comprehensive Scan with OS" profile), you need to run the application with sudo:
+Several scan profiles require root privileges for advanced features. Run the application with sudo:
 
 ```bash
 sudo pnpm dev
 ```
 
-⚠️ **Note**: Running with sudo is required for:
-- OS detection (`-O` flag)
-- SYN scans (`-sS` flag)
+🔐 **Profiles Requiring Root/Sudo:**
+- **Standard SYN Scan** - SYN stealth scanning (`-sS`)
+- **Comprehensive with OS Detection** - OS fingerprinting (`-O`) + SYN scan
+- **Stealth Scan** - SYN scan with evasion techniques
+- **UDP Service Scan** - UDP scanning (`-sU`)
 
-Without sudo, use the "Comprehensive (No Root)" profile which provides excellent service detection without requiring elevated privileges.
+✅ **Profiles Working Without Root:**
+- **Quick Discovery** - TCP connect scan
+- **Comprehensive (No Root)** - TCP connect with service detection ⭐ **Default**
+- **Detailed Analysis** - TCP connect with NSE scripts
+- **Complete Port Scan** - TCP connect on all ports
+
+💡 **Recommendation**: Use "Comprehensive (No Root)" for excellent results without sudo. It provides service version detection, vulnerability scanning via NSE scripts, and comprehensive port coverage.
 
 ## API Routes
 
@@ -272,12 +304,14 @@ Trigger a manual network scan with a specific profile
 ```
 
 **Available Profiles:**
-- `quick` - Fast discovery (30-60s)
-- `comprehensive_noroot` - Detailed service detection without root (5-8 min)
-- `standard` - Standard SYN scan (requires root, 1-2 min)
-- `detailed` - Service version detection (2-5 min)
-- `comprehensive` - Full OS and service detection (requires root, 5-10 min)
-- `allports` - All 65,535 ports (15-30 min)
+- `quick` - Fast discovery (15-30s)
+- `comprehensive_noroot` ⭐ - Detailed service detection with NSE scripts (3-6 min) **Default**
+- `standard` - SYN scan with service detection (requires root, 45-90s)
+- `detailed` - Thorough analysis with NSE scripts (4-8 min)
+- `comprehensive` - Full OS, services, scripts (requires root, 4-8 min)
+- `allports` - All 65,535 ports (10-20 min)
+- `stealth` - Slow, quiet scan for IDS evasion (requires root, 5-10 min)
+- `udp` - UDP service discovery (requires root, 3-5 min)
 
 ### GET /api/scan/history
 Get scan history (last 10 scans)
