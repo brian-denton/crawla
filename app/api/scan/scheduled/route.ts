@@ -34,7 +34,7 @@ function initializeScheduledScanning(profile: string = 'comprehensive_noroot', r
     } catch (error) {
       console.error('Scheduled scan failed:', error);
     }
-  }, 10 * 60 * 1000);
+  }, 30 * 60 * 1000);
 
   console.log(`Scheduled scanning initialized with ${profile} profile - running every 10 minutes`);
 }
