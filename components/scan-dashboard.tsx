@@ -389,7 +389,7 @@ export function ScanDashboard() {
                 {formatTimeUntilNextScan()}
               </div>
               <p className="text-xs text-muted-foreground">
-                Auto-scan every 10 minutes
+                Auto-scan every 30 minutes
               </p>
             </CardContent>
           </Card>
